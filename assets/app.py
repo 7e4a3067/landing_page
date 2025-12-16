@@ -1,254 +1,204 @@
 import streamlit as st
 import os
 import json
-import mammoth  # 必须安装: pip install mammoth
+import mammoth  # pip install mammoth
 
 # ==========================================
-# 1. 基础配置与数据管理
+# 1. 基础配置与数据结构
 # ==========================================
+st.set_page_config(page_title="2025 Event Platform", layout="wide", initial_sidebar_state="collapsed")
 
-st.set_page_config(page_title="2025 Python Summit", layout="wide")
+DATA_FILE = "campaigns.json"
+ADMIN_PASSWORD = "123456"  # 🔐 管理员密码
 
-# 文件路径配置
-DATA_FILE = "tnc_data.json"
-LANG_CONFIG_FILE = "languages.json"
-
-# 预设的 20+ 种语言
-DEFAULT_LANGUAGES = {
-    "zh": "Chinese (Simplified) - 简体中文",
-    "en": "English - 英语",
-    "ms": "Malay - 马来语",
-    "th": "Thai - 泰语",
-    "vi": "Vietnamese - 越南语",
-    "id": "Indonesian - 印尼语",
-    "ja": "Japanese - 日语",
-    "ko": "Korean - 韩语",
-    "tl": "Tagalog - 菲律宾语",
-    "hi": "Hindi - 印地语",
-    "es": "Spanish - 西班牙语",
-    "pt": "Portuguese - 葡萄牙语",
-    "fr": "French - 法语",
-    "de": "German - 德语",
-    "ru": "Russian - 俄语",
-    "ar": "Arabic - 阿拉伯语",
-    "tr": "Turkish - 土耳其语",
-    "it": "Italian - 意大利语",
-    "pl": "Polish - 波兰语",
-    "nl": "Dutch - 荷兰语"
+# 预设语言
+LANGUAGES = {
+    "en": "English",
+    "zh": "简体中文",
+    "ms": "Bahasa Melayu"
 }
 
-# --- 辅助函数：加载/保存数据 ---
-def load_json(filepath, default_data):
-    if not os.path.exists(filepath):
-        return default_data
+# --- 数据读写函数 ---
+def load_data():
+    if not os.path.exists(DATA_FILE):
+        return {}
     try:
-        with open(filepath, "r", encoding="utf-8") as f:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
     except:
-        return default_data
+        return {}
 
-def save_json(filepath, data):
-    with open(filepath, "w", encoding="utf-8") as f:
+def save_data(data):
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=4)
 
-# --- 辅助函数：智能查找图片路径 ---
-def get_image_path(filename):
-    # 优先找当前目录，再找 assets 目录，再找上一级目录的 assets
-    possible_paths = [
-        filename,
-        os.path.join("assets", filename),
-        os.path.join("..", "assets", filename)
-    ]
-    for path in possible_paths:
-        if os.path.exists(path):
-            return path
-    return None
-
-# 初始化数据
-tnc_data = load_json(DATA_FILE, {})
-languages = load_json(LANG_CONFIG_FILE, DEFAULT_LANGUAGES)
+# 加载数据
+campaigns_db = load_data()
 
 # ==========================================
-# 2. CSS 样式 (让表格好看)
-# ==========================================
-st.markdown("""
-<style>
-    /* 强制给所有表格添加边框，模拟 Word 效果 */
-    table {
-        border-collapse: collapse;
-        width: 100%;
-        margin-bottom: 1rem;
-        border: 1px solid #444; /* 外边框 */
-    }
-    th, td {
-        border: 1px solid #ccc; /* 单元格边框 */
-        padding: 8px;
-        text-align: left;
-        color: inherit; /* 继承字体颜色 */
-    }
-    th {
-        background-color: #f0f2f6; /* 表头背景色 */
-        color: #000;
-    }
-    /* 针对暗色模式的微调 */
-    @media (prefers-color-scheme: dark) {
-        th { background-color: #262730; color: #fff; }
-        td { border-color: #444; }
-    }
-</style>
-""", unsafe_allow_html=True)
-
-# ==========================================
-# 3. 页面逻辑
+# 2. 逻辑分流 (路由控制)
 # ==========================================
 
-# 页面导航
-tab_home, tab_admin, tab_settings = st.tabs(["🏠 活动主页 / Home", "⚙️ 内容管理 / Admin", "🌍 语言设置 / Settings"])
+# 获取 URL 里的参数 (?id=xxx)
+query_params = st.query_params
+# 兼容不同版本的 Streamlit 获取方式
+campaign_id = query_params.get("id", None)
+if isinstance(campaign_id, list): campaign_id = campaign_id[0]
 
-# ------------------------------------------
-# TAB 1: 用户主页
-# ------------------------------------------
-with tab_home:
-    # 1. 尝试加载 Logo
-    logo_path = get_image_path("logo.png")
-    if logo_path:
-        st.image(logo_path, width=200)
-    else:
-        st.warning("⚠️ Logo not found (logo.png)")
+# ==========================================
+# 3. 场景 A: 客户看到的页面 (纯净版)
+# ==========================================
+if campaign_id:
+    # 隐藏自带的菜单汉堡按钮和页脚，做到极致纯净
+    st.markdown("""
+        <style>
+            [data-testid="stSidebar"] {display: none;}
+            .stAppHeader {display: none;} 
+            footer {visibility: hidden;}
+            #MainMenu {visibility: hidden;}
+        </style>
+    """, unsafe_allow_html=True)
 
-    # 2. 尝试加载 Banner
-    banner_path = get_image_path("banner.png")
-    # 兼容 jpg
-    if not banner_path: 
-        banner_path = get_image_path("banner.jpg")
+    # 检查活动是否存在
+    if campaign_id not in campaigns_db:
+        st.error("❌ 找不到该活动页面 (Campaign Not Found)")
+        st.stop()
 
-    if banner_path:
-        st.image(banner_path, use_container_width=True)
-    else:
-        st.info("Banner not found (banner.png)")
+    data = campaigns_db[campaign_id]
 
-    st.divider()
-
-    st.subheader("📋 Terms and Conditions")
-
-    # 语言选择
-    lang_code = st.selectbox(
-        "Select Language / 选择语言",
-        options=list(languages.keys()),
-        format_func=lambda x: languages.get(x, x)
-    )
-
-    # 显示内容
-    with st.container(border=True):
-        content = tnc_data.get(lang_code, "")
-        if content:
-            st.markdown(content, unsafe_allow_html=True)
-        else:
-            st.markdown("*暂无内容 / No Content Uploaded*", unsafe_allow_html=True)
-
-# ------------------------------------------
-# TAB 2: 管理后台 (核心功能)
-# ------------------------------------------
-with tab_admin:
-    st.header("📄 Upload & Edit Word Files")
-    st.info("上传 Word 文档后，系统会自动提取表格和文字。你可以继续编辑 HTML 代码来微调。")
-
-    # 1. 选择要编辑的语言
-    target_lang = st.selectbox(
-        "Step 1: 选择目标语言 / Target Language",
-        options=list(languages.keys()),
-        format_func=lambda x: languages.get(x, x),
-        key="admin_lang_select"
-    )
-
-    col1, col2 = st.columns([1, 1.5])
-
-    # --- 左侧：上传区 ---
-    with col1:
-        st.markdown("### 📤 上传 Word (.docx)")
-        uploaded_file = st.file_uploader(f"Upload for [{languages[target_lang]}]", type=['docx'], key=f"uploader_{target_lang}")
-
-        if uploaded_file is not None:
-            # 按钮：开始转换
-            if st.button("🔄 开始转换 / Convert to HTML", type="primary"):
-                try:
-                    # 使用 mammoth 转换
-                    result = mammoth.convert_to_html(uploaded_file)
-                    html = result.value
-                    messages = result.messages
-                    
-                    # 检查是否为空 (常见错误：内容在文本框里)
-                    if not html.strip():
-                        st.error("⚠️ 转换结果为空！")
-                        st.warning("请检查：Word 里的表格是否放在了【文本框】里？请把表格复制到正文中再试。")
-                    else:
-                        # !!! 关键步骤：保存到 Session State，防止刷新丢失 !!!
-                        st.session_state[f"temp_html_{target_lang}"] = html
-                        st.success(f"✅ 转换成功！提取了 {len(html)} 个字符。")
-                        st.rerun() # 强制刷新以更新右侧编辑器
-                except Exception as e:
-                    st.error(f"转换出错: {e}")
-
-    # --- 右侧：编辑区 ---
-    with col2:
-        st.markdown("### ✏️ 编辑与发布")
-        
-        # 逻辑：优先显示刚刚转换的内容，如果没有，则显示数据库里已保存的内容
-        # session_state key: f"temp_html_{target_lang}"
-        
-        current_saved_content = tnc_data.get(target_lang, "")
-        draft_content = st.session_state.get(f"temp_html_{target_lang}", current_saved_content)
-
-        # 编辑器 (Text Area)
-        final_content = st.text_area(
-            "HTML Editor (可微调内容)", 
-            value=draft_content, 
-            height=600,
-            key=f"editor_{target_lang}"
-        )
-
-        # 保存按钮
-        if st.button("💾 保存并发布 / Save & Publish", type="primary"):
-            # 1. 保存到内存字典
-            tnc_data[target_lang] = final_content
-            # 2. 写入 JSON 文件
-            save_json(DATA_FILE, tnc_data)
-            
-            # 3. 清理临时状态 (可选，这里保留以免用户想撤销，或者直接清除)
-            # if f"temp_html_{target_lang}" in st.session_state:
-            #     del st.session_state[f"temp_html_{target_lang}"]
-            
-            st.success(f"🎉 [{languages[target_lang]}] 内容已更新！去首页看看吧。")
-            # 稍微等待一下让用户看到成功提示
-            import time
-            time.sleep(1)
-            st.rerun()
-
-# ------------------------------------------
-# TAB 3: 语言设置
-# ------------------------------------------
-with tab_settings:
-    st.header("🌍 添加新语言 / Add Language")
+    # --- 渲染客户页面 ---
     
-    c1, c2, c3 = st.columns([1, 2, 1])
-    with c1:
-        new_code = st.text_input("Code (e.g., 'fr')", max_chars=5).strip()
-    with c2:
-        new_name = st.text_input("Name (e.g., 'French - 法语')").strip()
-    with c3:
-        st.write("")
-        st.write("")
-        if st.button("➕ 添加 / Add"):
-            if new_code and new_name:
-                if new_code in languages:
-                    st.error("语言代码已存在 / Code exists")
-                else:
-                    languages[new_code] = new_name
-                    save_json(LANG_CONFIG_FILE, languages)
-                    st.success(f"Added: {new_name}")
-                    st.rerun()
-            else:
-                st.warning("请填写完整 / Fill all fields")
+    # 1. Banner (如果有上传)
+    banner_file = f"assets/{campaign_id}_banner.png"
+    if os.path.exists(banner_file):
+        st.image(banner_file, use_container_width=True)
+    else:
+        # 如果没有专属Banner，显示标题
+        st.title(data.get("title", "Event Page"))
 
     st.divider()
-    st.write("Current Languages:", languages)
+
+    # 2. 语言切换
+    col_lang, _ = st.columns([1, 3])
+    with col_lang:
+        selected_lang = st.selectbox("🌐 Language", list(LANGUAGES.keys()), format_func=lambda x: LANGUAGES[x])
+
+    # 3. 内容展示 (HTML)
+    content = data["content"].get(selected_lang, "")
+    
+    # CSS 美化表格
+    st.markdown("""
+    <style>
+        table {width: 100%; border-collapse: collapse; border: 1px solid #ddd;}
+        th, td {border: 1px solid #ddd; padding: 8px;}
+        th {background-color: #f2f2f2;}
+    </style>
+    """, unsafe_allow_html=True)
+
+    if content:
+        st.markdown(content, unsafe_allow_html=True)
+    else:
+        st.info("No content available for this language.")
+
+# ==========================================
+# 4. 场景 B: 管理员后台 (Admin Only)
+# ==========================================
+else:
+    # 只有在没有 ?id=xxx 的时候，才会显示后台登录界面
+    
+    st.title("⚙️ Campaign Manager System")
+    
+    # --- 登录锁 ---
+    if "logged_in" not in st.session_state:
+        st.session_state["logged_in"] = False
+
+    if not st.session_state["logged_in"]:
+        pwd = st.text_input("Enter Admin Password", type="password")
+        if st.button("Login"):
+            if pwd == ADMIN_PASSWORD:
+                st.session_state["logged_in"] = True
+                st.rerun()
+            else:
+                st.error("Wrong password")
+        st.stop()
+
+    # --- 登录后的控制台 ---
+    
+    st.sidebar.header("管理菜单")
+    menu = st.sidebar.radio("Menu", ["📦 活动列表 (Campaigns)", "➕ 新建活动 (Create New)"])
+
+    if menu == "➕ 新建活动 (Create New)":
+        st.subheader("Create New Campaign")
+        new_id = st.text_input("设置 ID (英文/数字, 例如: xmas2025)").strip()
+        new_title = st.text_input("活动标题 (内部备注)")
+        
+        if st.button("Create"):
+            if not new_id:
+                st.error("ID 不能为空")
+            elif new_id in campaigns_db:
+                st.error("ID 已存在！")
+            else:
+                campaigns_db[new_id] = {
+                    "title": new_title,
+                    "content": {l: "" for l in LANGUAGES} # 初始化空内容
+                }
+                save_data(campaigns_db)
+                st.success(f"创建成功！ID: {new_id}")
+                st.rerun()
+
+    elif menu == "📦 活动列表 (Campaigns)":
+        # 选择要编辑的活动
+        all_ids = list(campaigns_db.keys())
+        if not all_ids:
+            st.info("还没有任何活动，请去新建一个。")
+            st.stop()
+            
+        target_id = st.selectbox("选择要编辑的活动 / Select Campaign", all_ids)
+        current_data = campaigns_db[target_id]
+
+        st.divider()
+        st.markdown(f"### 正在编辑: **{current_data['title']}**")
+        
+        # === 核心功能：生成专属链接 ===
+        # 这里自动获取当前的基础网址，加上 ?id=xxx
+        # 注意：本地测试是 localhost，上线后会自动变成你的域名
+        base_url = "http://localhost:8501" # ⚠️ 上线后这里会自动变，或者你可以手动改为你的域名
+        full_url = f"?id={target_id}"
+        
+        st.info(f"🔗 **客户专属链接 (发送这个给客户):**")
+        st.code(f"{base_url}/{full_url}", language="text")
+        st.caption("提示：在 Streamlit Cloud 上，把 localhost 换成你的 .app 网址即可。")
+
+        # === 1. 上传该活动的 Banner ===
+        st.write("#### 1. 上传 Banner")
+        banner_up = st.file_uploader("Upload Banner (PNG/JPG)", type=["png", "jpg"], key=f"b_{target_id}")
+        if banner_up:
+            # 确保 assets 文件夹存在
+            if not os.path.exists("assets"): os.makedirs("assets")
+            # 保存为特定名字: assets/campaign1_banner.png
+            save_path = f"assets/{target_id}_banner.png"
+            with open(save_path, "wb") as f:
+                f.write(banner_up.getbuffer())
+            st.success("Banner 已更新！")
+            st.image(save_path, width=300)
+
+        # === 2. 编辑内容 (Word 上传) ===
+        st.write("#### 2. 编辑 Terms & Content")
+        edit_lang = st.radio("选择语言", list(LANGUAGES.keys()), horizontal=True, format_func=lambda x: LANGUAGES[x])
+        
+        word_file = st.file_uploader(f"上传 Word 文档 ({LANGUAGES[edit_lang]})", type=["docx"], key=f"w_{target_id}")
+        
+        if word_file and st.button("🔄 转换并保存内容"):
+            result = mammoth.convert_to_html(word_file)
+            html = result.value
+            if html:
+                campaigns_db[target_id]["content"][edit_lang] = html
+                save_data(campaigns_db)
+                st.success("内容已保存！")
+                st.rerun()
+            else:
+                st.error("内容为空，请检查文本框问题。")
+
+        # 预览当前内容
+        with st.expander("👀 预览当前内容代码"):
+            st.text(campaigns_db[target_id]["content"].get(edit_lang, "")[:200] + "...")
